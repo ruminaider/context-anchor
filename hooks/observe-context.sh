@@ -133,7 +133,7 @@ OBSERVER_MODEL="${CONTEXT_ANCHOR_MODEL:-haiku}"
 log "Calling claude --print --model $OBSERVER_MODEL"
 
 # Call claude in observer mode with tool access for file writing
-CLAUDE_RESPONSE=$(echo "$OBSERVER_PROMPT" | (cd "$OBSERVER_WORK_DIR" && CONTEXT_ANCHOR_OBSERVER_MODE=true claude --print --model "$OBSERVER_MODEL" --allowedTools "Write,Read,Bash" --dangerouslySkipPermissions) 2>/dev/null)
+CLAUDE_RESPONSE=$(echo "$OBSERVER_PROMPT" | (cd "$OBSERVER_WORK_DIR" && CONTEXT_ANCHOR_OBSERVER_MODE=true claude --print --model "$OBSERVER_MODEL" --allowedTools "Write,Read,Bash" --dangerously-skip-permissions) 2>/dev/null)
 CLAUDE_EXIT=$?
 
 if [ $CLAUDE_EXIT -ne 0 ]; then
