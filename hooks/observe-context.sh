@@ -52,6 +52,12 @@ fi
 # Get current transcript size
 CURRENT_SIZE=$(wc -c < "$TRANSCRIPT_PATH" | tr -d ' ')
 
+# Detect transcript shrinkage (compaction resets the file)
+if [ "$LAST_OFFSET" -gt "$CURRENT_SIZE" ]; then
+    log "Transcript shrank (offset=$LAST_OFFSET, size=$CURRENT_SIZE) — likely compacted, resetting offset"
+    LAST_OFFSET=0
+fi
+
 # Skip if no new content (for Stop hook only — PreCompact always runs)
 if [ "$HOOK_EVENT" = "Stop" ] && [ "$CURRENT_SIZE" -le "$LAST_OFFSET" ]; then
     log "No new content since last check (offset=$LAST_OFFSET, size=$CURRENT_SIZE)"
@@ -65,14 +71,8 @@ if [ "$HOOK_EVENT" = "PreCompact" ]; then
     RECENT_CONTEXT=$(tail -n 30 "$TRANSCRIPT_PATH" | jq -s '.' 2>/dev/null)
     log "PreCompact: using last 30 lines of transcript"
 else
-    if [ "$LAST_OFFSET" -gt 0 ]; then
-        RECENT_CONTEXT=$(tail -c +$((LAST_OFFSET + 1)) "$TRANSCRIPT_PATH" | jq -s '.' 2>/dev/null)
-        log "Delta extraction from offset $LAST_OFFSET (delta size: $((CURRENT_SIZE - LAST_OFFSET)) bytes)"
-    else
-        # First run — take last 15 lines
-        RECENT_CONTEXT=$(tail -n 15 "$TRANSCRIPT_PATH" | jq -s '.' 2>/dev/null)
-        log "First run: using last 15 lines of transcript"
-    fi
+    RECENT_CONTEXT=$(tail -c +$((LAST_OFFSET + 1)) "$TRANSCRIPT_PATH" | jq -s '.' 2>/dev/null)
+    log "Delta extraction from offset $LAST_OFFSET (delta size: $((CURRENT_SIZE - LAST_OFFSET)) bytes)"
 fi
 
 # Check if delta is too small to bother (< 200 bytes for Stop hooks)
