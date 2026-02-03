@@ -1,16 +1,28 @@
 # context-anchor
 
-A Claude Code plugin that survives context compaction by maintaining and re-injecting a structured context anchor — preserving intent, decisions, and direction across compaction events.
+A Claude Code plugin that preserves your conversation's intent, decisions, and direction across context compaction — so the agent never loses track of what you're building or why.
 
-## The Problem
+## Why Context Anchoring
 
-When Claude Code's context window fills up, compaction summarizes the conversation into a compressed form. This causes three failure modes:
+Long Claude Code sessions accumulate context that matters: the original goal, trade-offs you evaluated, decisions you made, and the direction you steered toward. When the context window fills up, compaction compresses all of this into a summary — and summaries optimize for *what happened*, not *what matters*.
 
-1. **Lost intent** — the original purpose and constraints disappear
+Context anchoring solves this by maintaining a **structured briefing document** alongside your conversation. Instead of relying on compaction to preserve the right things, the anchor explicitly tracks:
+
+- **Purpose** — why this conversation exists and what success looks like
+- **Trajectory** — the key decisions that shaped the current path
+- **Current Direction** — what the agent should do next and why
+
+The anchor is a **living snapshot, not a log**. It consolidates as the conversation evolves — replacing outdated decisions rather than appending to them. After compaction, the anchor is re-injected into the fresh context, giving the agent a clear re-initialization briefing that no summary could replicate.
+
+### What Goes Wrong Without It
+
+When Claude Code compacts a conversation without an anchor, three things break:
+
+1. **Lost intent** — the original purpose and constraints disappear into a generic summary
 2. **Lost decisions** — accumulated agreements are partially or fully dropped
 3. **Lost steering** — recent directional input from the user is forgotten
 
-The agent "resumes the last thing it was doing" without understanding *why* it was doing it.
+The agent "resumes the last thing it was doing" without understanding *why* it was doing it. With an anchor, it re-initializes with full awareness of purpose, decisions, and direction.
 
 ## How It Works
 
@@ -28,7 +40,7 @@ User message → Agent responds → Stop hook fires
                                     ▼
                           Haiku observer (prompt-type hook)
                           reads conversation + existing anchor
-                          updates .claude/context-anchor.md
+                          updates ~/.context-anchor-data/{session}.md
                           if trajectory changed
 
 
@@ -52,7 +64,7 @@ Native compaction runs
 SessionStart("compact") hook fires
         │
         ▼
-Shell script reads .claude/context-anchor.md
+Shell script reads ~/.context-anchor-data/{session}.md
 Outputs to stdout → injected as
 <system-reminder> into fresh context
         │
@@ -96,7 +108,7 @@ Understanding *when* each hook fires relative to compaction is critical:
 
 ## The Anchor Format
 
-The anchor lives at `.claude/context-anchor.md` in your project and has three sections:
+Each session gets its own anchor at `~/.context-anchor-data/{session-id}.md` with three sections:
 
 ```markdown
 ## Purpose
@@ -122,12 +134,22 @@ behind it. Includes any recent steering from the user.
 
 ## Installation
 
+### Prerequisites
+
+- **Claude Code** with hooks support enabled
+- **Claude Pro or Max subscription** — the plugin uses prompt-type hooks (Haiku observer), so no API key is required
+
+### Install the Plugin
+
+From within Claude Code, run:
+
 ```bash
-/plugin marketplace add ruminaider/context-anchor
-/plugin install context-anchor
+/install-plugin https://github.com/ruminaider/context-anchor
 ```
 
-Add this to your project's `CLAUDE.md`:
+### Configure Your Project
+
+Add this to your project's `CLAUDE.md` so the agent knows how to use the anchor after compaction:
 
 ```markdown
 ## Context Anchor System
@@ -139,7 +161,15 @@ resume work based solely on the compaction summary — the anchor contains the
 human's intent and key decisions that the summary may have lost.
 ```
 
-Add `.claude/context-anchor.md` to your project's `.gitignore` — the anchor is session-specific and should not be committed.
+### Verify It's Working
+
+After a few turns of conversation, check the observer log:
+
+```bash
+cat ~/.context-anchor-logs/observer.log
+```
+
+You should see `[Stop] Hook fired` entries showing the observer evaluating each turn. Once enough meaningful context accumulates, an anchor file will appear in `~/.context-anchor-data/`.
 
 ## How It Differs from Episodic Memory
 
@@ -149,11 +179,6 @@ Add `.claude/context-anchor.md` to your project's `.gitignore` — the anchor is
 | **Scope** | Single conversation | Cross-session |
 | **Growth pattern** | Consolidates (gets tighter over time) | Appends (grows over time) |
 | **Purpose** | Re-initialization after compaction | Historical recall |
-
-## Requirements
-
-- Claude Code with hooks support
-- Claude Pro or Max subscription (no API key needed — uses prompt-type hooks)
 
 ## Design Decisions
 

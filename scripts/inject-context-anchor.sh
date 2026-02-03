@@ -23,7 +23,7 @@ if [ -z "$CWD" ] || [ -z "$SESSION_ID" ]; then
     exit 0
 fi
 
-ANCHOR="$CWD/.claude/context-anchors/$SESSION_ID.md"
+ANCHOR="$HOME/.context-anchor-data/$SESSION_ID.md"
 
 if [ -f "$ANCHOR" ]; then
     echo "[$(date -Iseconds)] Anchor found, injecting ($(wc -c < "$ANCHOR") bytes)" >> "$LOG_FILE"

@@ -2,7 +2,8 @@
 
 # Context Anchor Observer - Stop/PreCompact Hook Script
 # Evaluates recent conversation and updates the context anchor file
-# Uses another Claude instance (haiku) to semantically evaluate importance
+# Uses model escalation based on delta size: haiku (<50KB) → sonnet (<200KB) → opus
+# Deltas exceeding 500KB are capped to prevent context window overflow
 
 # Prevent recursive calls from the observer's own Claude instance
 if [ "$CONTEXT_ANCHOR_OBSERVER_MODE" = "true" ]; then
@@ -26,7 +27,7 @@ if [ -z "$CWD" ] || [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ]; th
 fi
 
 # Setup paths
-ANCHOR_DIR="$CWD/.claude/context-anchors"
+ANCHOR_DIR="$HOME/.context-anchor-data"
 ANCHOR_FILE="$ANCHOR_DIR/$SESSION_ID.md"
 STATE_DIR="$HOME/.context-anchor-state"
 STATE_FILE="$STATE_DIR/$SESSION_ID.offset"
@@ -66,13 +67,36 @@ if [ "$HOOK_EVENT" = "Stop" ] && [ "$CURRENT_SIZE" -le "$LAST_OFFSET" ]; then
 fi
 
 # Extract delta — only new content since last check
-# For PreCompact, we take more context (last 30 lines) to be thorough
+# Model escalation thresholds (bytes) — configurable via env vars
+HAIKU_MAX=${CONTEXT_ANCHOR_HAIKU_MAX:-50000}
+SONNET_MAX=${CONTEXT_ANCHOR_SONNET_MAX:-200000}
+HARD_CAP=${CONTEXT_ANCHOR_HARD_CAP:-500000}
+
 if [ "$HOOK_EVENT" = "PreCompact" ]; then
+    # PreCompact: use last 30 lines for thorough final capture
     RECENT_CONTEXT=$(tail -n 30 "$TRANSCRIPT_PATH" | jq -s '.' 2>/dev/null)
     log "PreCompact: using last 30 lines of transcript"
 else
-    RECENT_CONTEXT=$(tail -c +$((LAST_OFFSET + 1)) "$TRANSCRIPT_PATH" | jq -s '.' 2>/dev/null)
-    log "Delta extraction from offset $LAST_OFFSET (delta size: $((CURRENT_SIZE - LAST_OFFSET)) bytes)"
+    DELTA_BYTES=$((CURRENT_SIZE - LAST_OFFSET))
+
+    if [ "$DELTA_BYTES" -gt "$HARD_CAP" ]; then
+        # Exceeds all model context windows — cap to hard limit, use best model
+        # tail -c cuts mid-line, so skip the first partial line before jq parsing
+        RECENT_CONTEXT=$(tail -c "$HARD_CAP" "$TRANSCRIPT_PATH" | tail -n +2 | jq -s '.' 2>/dev/null)
+        ESCALATED_MODEL="opus"
+        log "Delta capped: ${DELTA_BYTES}b > hard cap ${HARD_CAP}b, using last ${HARD_CAP}b with opus"
+    elif [ "$DELTA_BYTES" -gt "$SONNET_MAX" ]; then
+        RECENT_CONTEXT=$(tail -c +$((LAST_OFFSET + 1)) "$TRANSCRIPT_PATH" | jq -s '.' 2>/dev/null)
+        ESCALATED_MODEL="opus"
+        log "Delta ${DELTA_BYTES}b > ${SONNET_MAX}b, escalating to opus"
+    elif [ "$DELTA_BYTES" -gt "$HAIKU_MAX" ]; then
+        RECENT_CONTEXT=$(tail -c +$((LAST_OFFSET + 1)) "$TRANSCRIPT_PATH" | jq -s '.' 2>/dev/null)
+        ESCALATED_MODEL="sonnet"
+        log "Delta ${DELTA_BYTES}b > ${HAIKU_MAX}b, escalating to sonnet"
+    else
+        RECENT_CONTEXT=$(tail -c +$((LAST_OFFSET + 1)) "$TRANSCRIPT_PATH" | jq -s '.' 2>/dev/null)
+        log "Delta extraction from offset $LAST_OFFSET (delta size: ${DELTA_BYTES}b)"
+    fi
 fi
 
 # Check if delta is too small to bother (< 200 bytes for Stop hooks)
@@ -127,8 +151,14 @@ The anchor has three sections:
 If nothing meaningful changed, do NOT write to the file. Keep the anchor concise — every line must serve re-initialization."
 fi
 
-# Model can be configured via CONTEXT_ANCHOR_MODEL env var (default: haiku)
-OBSERVER_MODEL="${CONTEXT_ANCHOR_MODEL:-haiku}"
+# Model selection: explicit override > delta-based escalation > default (haiku)
+if [ -n "$CONTEXT_ANCHOR_MODEL" ]; then
+    OBSERVER_MODEL="$CONTEXT_ANCHOR_MODEL"
+elif [ -n "$ESCALATED_MODEL" ]; then
+    OBSERVER_MODEL="$ESCALATED_MODEL"
+else
+    OBSERVER_MODEL="haiku"
+fi
 
 log "Calling claude -p --model $OBSERVER_MODEL"
 
@@ -136,14 +166,15 @@ log "Calling claude -p --model $OBSERVER_MODEL"
 CLAUDE_RESPONSE=$(echo "$OBSERVER_PROMPT" | (cd "$OBSERVER_WORK_DIR" && CONTEXT_ANCHOR_OBSERVER_MODE=true claude -p --model "$OBSERVER_MODEL" --allowedTools "Write,Read,Bash" --dangerously-skip-permissions) 2>/dev/null)
 CLAUDE_EXIT=$?
 
+# Always update the offset tracker — even on failure, so we don't retry
+# the same oversized input in an infinite loop
+echo "$CURRENT_SIZE" > "$STATE_FILE"
+
 if [ $CLAUDE_EXIT -ne 0 ]; then
     log "Claude command failed with exit code $CLAUDE_EXIT"
     echo '{"decision": "approve", "reason": "Observer command failed"}'
     exit 0
 fi
-
-# Update the offset tracker
-echo "$CURRENT_SIZE" > "$STATE_FILE"
 
 # Check if anchor was created/updated
 if [ -f "$ANCHOR_FILE" ]; then
