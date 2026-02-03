@@ -1,0 +1,14 @@
+{
+  "name": "context-anchor",
+  "version": "0.1.0",
+  "description": "Survives context compaction by maintaining and re-injecting a structured context anchor — preserving intent, decisions, and direction across compaction events.",
+  "author": {
+    "name": "ruminaider",
+    "url": "https://github.com/ruminaider"
+  },
+  "homepage": "https://github.com/ruminaider/context-anchor",
+  "repository": "https://github.com/ruminaider/context-anchor",
+  "license": "MIT",
+  "keywords": ["context", "compaction", "memory", "anchor", "context-engineering"],
+  "hooks": "./hooks/hooks.json"
+}

@@ -1,0 +1,41 @@
+{
+  "description": "Context anchor hooks — captures intent/decisions/direction during conversation and re-injects them after compaction",
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "prompt",
+            "model": "haiku",
+            "prompt": "You are a context curator. Your job is to maintain a context anchor file that helps an agent re-initialize after context compaction.\n\nRead the current context anchor at .claude/context-anchor.md (if it exists). Then review the recent conversation.\n\nThe anchor has three sections:\n\n## Purpose\nWhy this conversation exists. The human's original intent and what success looks like.\n\n## Trajectory\nKey decisions that shaped the current path. Each a single statement of what was decided and why. Remove superseded decisions — this is current state, not history.\n\n## Current Direction\nWhat the agent should be doing right now and the reasoning behind it. Includes any recent steering from the user.\n\nUpdate the anchor file ONLY if the conversation's purpose, key decisions, or current direction have meaningfully changed. If nothing changed, do nothing.\n\nWhen updating:\n- Replace, don't append. The anchor is a living snapshot, not a log.\n- Every line must serve agent re-initialization. If a line doesn't help an agent understand why it's here, what was decided, or what to do next — cut it.\n- Consolidate related decisions into single statements.\n- Never include implementation details the agent can re-derive from code.\n- Remove timestamps and history. Current state only.",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "prompt",
+            "model": "haiku",
+            "prompt": "You are a context curator performing a FINAL update before context compaction. This is the last chance to capture context before the conversation is summarized and most detail is lost.\n\nRead the full conversation carefully. Read the current context anchor at .claude/context-anchor.md (if it exists).\n\nUpdate (or create) .claude/context-anchor.md with the definitive state of:\n\n## Purpose\nWhy this conversation exists. The human's original intent, constraints, and what success looks like. Not what the agent is doing — why it was asked to do it.\n\n## Trajectory\nEvery key decision that shaped the current path. Each a single statement of what was decided and why. Superseded decisions are removed. This is current state, not history.\n\n## Current Direction\nWhat the agent should be doing right now, the reasoning behind it, and any recent steering from the user that changed approach.\n\nBe thorough but concise. Every line must be load-bearing for re-initialization. An agent reading only this anchor should understand: why it's here, how it got here, and what it should do next.\n\nThis update is BLOCKING — compaction will not proceed until you finish. Take the time to get it right."
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/inject-context-anchor.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "context-anchor",
+  "owner": {
+    "name": "ruminaider"
+  },
+  "plugins": [
+    {
+      "name": "context-anchor",
+      "source": "./",
+      "description": "Survives context compaction by maintaining and re-injecting a structured context anchor — preserving intent, decisions, and direction across compaction events."
+    }
+  ]
+}
