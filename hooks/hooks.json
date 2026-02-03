@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" observe-context.sh"
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/observe-context.sh\""
           }
         ]
       }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" observe-context.sh"
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/observe-context.sh\""
           }
         ]
       }
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/inject-context-anchor.sh"
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/inject-context-anchor.sh\""
           }
         ]
       }
