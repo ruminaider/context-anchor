@@ -1,6 +1,6 @@
 {
   "name": "context-anchor",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Survives context compaction by maintaining and re-injecting a structured context anchor — preserving intent, decisions, and direction across compaction events.",
   "author": {
     "name": "ruminaider",
