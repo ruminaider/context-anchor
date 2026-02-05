@@ -28,7 +28,7 @@ The agent "resumes the last thing it was doing" without understanding *why* it w
 
 The plugin maintains a lightweight **context anchor** — a briefing document with three sections (Purpose, Trajectory, Current Direction) that captures why the conversation exists, what was decided, and what should happen next.
 
-A background Haiku observer updates the anchor as the conversation progresses. When compaction fires, the anchor is finalized and then re-injected into the fresh context window, ensuring the agent re-initializes with full awareness.
+A background observer updates the anchor as the conversation progresses, using **model escalation** based on delta size — Haiku for small updates, Sonnet for medium, Opus for large. When compaction fires, the anchor is finalized and then re-injected into the fresh context window, ensuring the agent re-initializes with full awareness.
 
 ### Architecture
 
@@ -38,7 +38,7 @@ DURING CONVERSATION (Capture)
 User message → Agent responds → Stop hook fires
                                     │
                                     ▼
-                          Haiku observer (prompt-type hook)
+                          Observer (model escalation)
                           reads conversation + existing anchor
                           updates ~/.context-anchor-data/{session}.md
                           if trajectory changed
@@ -52,7 +52,7 @@ Context window full (or /compact)
 PreCompact hook fires (BLOCKING)
         │
         ▼
-Haiku observer runs final update
+Observer runs final update
 synchronously — ensures anchor is
 fully current before context disappears
         │
@@ -102,9 +102,34 @@ Understanding *when* each hook fires relative to compaction is critical:
 
 | Component | Hook Type | Trigger | Job |
 |-----------|-----------|---------|-----|
-| **Periodic Observer** | `Stop` (prompt, Haiku) | After each agent turn | Updates anchor if trajectory changed |
-| **Final Observer** | `PreCompact` (prompt, Haiku, blocking) | Before compaction | Last-chance thorough anchor update |
+| **Periodic Observer** | `Stop` (prompt, model escalation) | After each agent turn | Updates anchor if trajectory changed |
+| **Final Observer** | `PreCompact` (prompt, blocking) | Before compaction | Last-chance thorough anchor update |
 | **Injector** | `SessionStart("compact")` (command) | After compaction | Reads anchor, outputs to stdout → system reminder |
+
+### Model Escalation
+
+The observer automatically selects the right model based on how much new content needs to be processed:
+
+| Delta Size | Model | Rationale |
+|------------|-------|-----------|
+| < 50KB | Haiku | Fast and cheap for routine incremental updates |
+| 50–200KB | Sonnet | Better comprehension for medium-sized context |
+| 200–500KB | Opus | Best quality for large context windows |
+| > 500KB | Opus (capped) | Hard cap to prevent context overflow; uses last 500KB |
+
+This ensures small routine updates stay fast and cheap, while cold starts or large turns get the comprehension they need. Thresholds are configurable via environment variables:
+
+```bash
+export CONTEXT_ANCHOR_HAIKU_MAX=50000    # bytes
+export CONTEXT_ANCHOR_SONNET_MAX=200000
+export CONTEXT_ANCHOR_HARD_CAP=500000
+```
+
+To force a specific model regardless of delta size:
+
+```bash
+export CONTEXT_ANCHOR_MODEL=sonnet  # or haiku, opus
+```
 
 ## The Anchor Format
 
@@ -184,7 +209,8 @@ You should see `[Stop] Hook fired` entries showing the observer evaluating each 
 
 | Decision | Rationale |
 |----------|-----------|
-| Capture is agent-driven (Haiku), not rule-based | A fixed rubric over-captures or under-captures. A model reading the conversation applies judgment like a human note-taker. |
+| Capture is agent-driven, not rule-based | A fixed rubric over-captures or under-captures. A model reading the conversation applies judgment like a human note-taker. |
+| Model escalation based on delta size | Small updates use Haiku (fast/cheap), large deltas use Sonnet or Opus (better comprehension). Keeps routine updates efficient while ensuring quality for complex context. |
 | Injection is hook-driven (shell script), not agent-driven | Injection must be guaranteed and mechanical. No compliance risk. |
 | Prompt-type hooks, not API calls | Works on Pro/Max subscriptions without requiring ANTHROPIC_API_KEY. |
 | SessionStart for injection, not PreCompact | PreCompact output gets compacted away. SessionStart("compact") output persists. |
