@@ -64,6 +64,27 @@ preprocess_transcript() {
             gsub("<system-reminder>[\\s\\S]*?</system-reminder>"; "")
         else . end)) |
 
+        # Stage 2.5: Drop messages emptied by system-reminder stripping
+        # (must run before annotation, since prefixes like [USER] are non-empty)
+        map(select(
+            if .message.content == null then false
+            elif (.message.content | type) == "string" then
+                (.message.content | gsub("\\s"; "") | length > 0)
+            elif (.message.content | type) == "array" then
+                ([.message.content[] |
+                    if .text then (.text | gsub("\\s"; ""))
+                    elif .content then
+                        if (.content | type) == "string" then (.content | gsub("\\s"; ""))
+                        elif (.content | type) == "array" then ([.content[] | .text // ""] | join("") | gsub("\\s"; ""))
+                        else ""
+                        end
+                    else ""
+                    end
+                ] | join("") | length > 0)
+            else false
+            end
+        )) |
+
         # Stage 3: Annotate by role
         map(
             if .type == "user" then
