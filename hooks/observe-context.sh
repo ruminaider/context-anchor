@@ -226,10 +226,24 @@ Be thorough but concise. Every line must serve agent re-initialization. An agent
 else
     OBSERVER_PROMPT="You are a context curator. Evaluate whether the context anchor needs updating.
 
+TRANSCRIPT ANNOTATIONS:
+Messages are annotated by source:
+- [USER]: Human input — the primary signal for intent and decisions
+- [AGENT]: Assistant responses — may contain speculative proposals the user never confirmed
+- [TOOL_CALL]: Tool invocations requested by the agent
+- [TOOL_RESULT]: Tool outputs (file contents, command results, etc.)
+Weight accordingly: a [USER] statement overrides an [AGENT] proposal. If the agent proposed something and the user did not explicitly confirm it, do not treat it as a decision.
+
+ENVIRONMENT vs. FEATURES:
+External tools, plugins, CLI utilities, linters, formatters, and development workflows visible in the conversation are part of the DEVELOPMENT ENVIRONMENT, not features being built. Do not include development tooling in Purpose or Current Direction unless the user explicitly states they are building that tool as part of the project.
+
+CURRENT DIRECTION GUIDELINES:
+This section must contain only work the user explicitly requested or confirmed. When uncertain whether something is a user decision or an agent suggestion, omit it. Err on the side of capturing less rather than fabricating direction.
+
 EXISTING ANCHOR:
 $EXISTING_ANCHOR
 
-NEW CONVERSATION SINCE LAST CHECK (JSONL transcript):
+NEW CONVERSATION SINCE LAST CHECK (preprocessed transcript):
 $RECENT_CONTEXT
 
 If the conversation's purpose, key decisions, or current direction have meaningfully changed, write the updated anchor to: $ANCHOR_FILE
