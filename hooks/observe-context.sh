@@ -42,6 +42,79 @@ log() {
     echo "[$(date -Iseconds)] [$HOOK_EVENT] $1" >> "$LOG_FILE"
 }
 
+# Preprocess transcript: filter noise, strip system reminders, annotate by role, drop empties
+# Input: $1 = JSON array string (raw RECENT_CONTEXT from jq -s '.')
+# Output: Preprocessed JSON array to stdout
+# Falls back to raw input if jq processing fails
+preprocess_transcript() {
+    local raw_json="$1"
+
+    if [ -z "$raw_json" ] || [ "$raw_json" = "null" ]; then
+        echo "[]"
+        return
+    fi
+
+    local processed
+    processed=$(echo "$raw_json" | jq -c '
+        # Stage 1: Keep only user and assistant messages
+        [.[] | select(.type == "user" or .type == "assistant")] |
+
+        # Stage 2: Strip <system-reminder> blocks from all string values
+        map(walk(if type == "string" then
+            gsub("<system-reminder>[\\s\\S]*?</system-reminder>"; "")
+        else . end)) |
+
+        # Stage 3: Annotate by role
+        map(
+            if .type == "user" then
+                if (.message.content | type) == "string" then
+                    { type: "user", ts: .timestamp,
+                      content: ("[USER] " + .message.content) }
+                else
+                    { type: "user", ts: .timestamp,
+                      content: (
+                        [(.message.content // [])[] |
+                            if .type == "tool_result" then
+                                if (.content | type) == "string" then
+                                    "[TOOL_RESULT] " + .content
+                                elif (.content | type) == "array" then
+                                    "[TOOL_RESULT] " + ([.content[] | .text // ""] | join("\n"))
+                                else ""
+                                end
+                            else
+                                "[USER] " + (.text // "")
+                            end
+                        ] | join("\n\n")
+                      ) }
+                end
+            elif .type == "assistant" then
+                { type: "assistant", ts: .timestamp,
+                  content: (
+                    [(.message.content // [])[] |
+                        if .type == "text" then
+                            "[AGENT] " + .text
+                        elif .type == "tool_use" then
+                            "[TOOL_CALL] " + .name
+                        else ""
+                        end
+                    ] | join("\n\n")
+                  ) }
+            else empty
+            end
+        ) |
+
+        # Stage 4: Drop messages with empty or whitespace-only content
+        map(select(.content | gsub("\\s"; "") | length > 0))
+    ' 2>/dev/null)
+
+    if [ $? -ne 0 ] || [ -z "$processed" ]; then
+        log "Preprocessing failed, falling back to raw delta"
+        echo "$raw_json"
+    else
+        echo "$processed"
+    fi
+}
+
 log "Hook fired. Session=$SESSION_ID CWD=$CWD"
 
 # Get the last processed byte offset
