@@ -195,10 +195,24 @@ fi
 if [ "$HOOK_EVENT" = "PreCompact" ]; then
     OBSERVER_PROMPT="You are a context curator performing a FINAL update before context compaction. This is the last chance to capture context before the conversation is summarized.
 
+TRANSCRIPT ANNOTATIONS:
+Messages are annotated by source:
+- [USER]: Human input — the PRIMARY signal for intent and decisions
+- [AGENT]: Assistant responses — may contain speculative proposals the user never confirmed
+- [TOOL_CALL]: Tool invocations requested by the agent
+- [TOOL_RESULT]: Tool outputs (file contents, command results, etc.)
+Weight accordingly: a [USER] statement overrides an [AGENT] proposal. If the agent proposed something and the user did not explicitly confirm it, do not treat it as a decision.
+
+ENVIRONMENT vs. FEATURES:
+External tools, plugins, CLI utilities, linters, formatters, and development workflows visible in the conversation are part of the DEVELOPMENT ENVIRONMENT, not features being built. Do not include development tooling in Purpose or Current Direction unless the user explicitly states they are building that tool as part of the project.
+
+CURRENT DIRECTION GUIDELINES (CRITICAL for PreCompact):
+This section must contain ONLY work the user explicitly requested or confirmed. If the agent proposed something and the user did not respond to it, OMIT it. Err on the side of capturing less rather than fabricating direction from speculation.
+
 EXISTING ANCHOR:
 $EXISTING_ANCHOR
 
-RECENT CONVERSATION (JSONL transcript):
+RECENT CONVERSATION (preprocessed transcript):
 $RECENT_CONTEXT
 
 Write the updated anchor file to: $ANCHOR_FILE
