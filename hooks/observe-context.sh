@@ -55,7 +55,7 @@ preprocess_transcript() {
     fi
 
     local processed
-    processed=$(echo "$raw_json" | jq -c '
+    processed=$(printf '%s' "$raw_json" | jq -c '
         # Stage 1: Keep only user and assistant messages
         [.[] | select(.type == "user" or .type == "assistant")] |
 
