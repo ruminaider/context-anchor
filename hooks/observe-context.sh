@@ -172,6 +172,10 @@ else
     fi
 fi
 
+# Preprocess: strip system reminders, annotate by role, drop noise
+RECENT_CONTEXT=$(preprocess_transcript "$RECENT_CONTEXT")
+log "Preprocessed delta: ${#RECENT_CONTEXT} chars"
+
 # Check if delta is too small to bother (< 200 bytes for Stop hooks)
 DELTA_SIZE=${#RECENT_CONTEXT}
 if [ "$HOOK_EVENT" = "Stop" ] && [ "$DELTA_SIZE" -lt 200 ]; then
