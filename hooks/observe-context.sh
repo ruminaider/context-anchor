@@ -219,10 +219,22 @@ else
     DELTA_BYTES=$((CURRENT_SIZE - LAST_OFFSET))
 
     if [ "$DELTA_BYTES" -gt "$HARD_CAP" ]; then
-        # Exceeds all model context windows — cap to hard limit, use best model
+        ESCALATED_MODEL="opus"
+
+        if [ ! -f "$ANCHOR_FILE" ]; then
+            # Cold start: no anchor yet. Try to copy parent's anchor (fork scenario).
+            PARENT_ANCHOR=$(find_parent_anchor "$TRANSCRIPT_PATH" "$SESSION_ID")
+            if [ -n "$PARENT_ANCHOR" ]; then
+                cp "$PARENT_ANCHOR" "$ANCHOR_FILE"
+                log "Cold start: copied parent anchor from $PARENT_ANCHOR"
+            else
+                log "Cold start: no parent anchor found, proceeding without seed"
+            fi
+        fi
+
+        # Normal hard cap: use last HARD_CAP bytes with opus
         # tail -c cuts mid-line, so skip the first partial line before jq parsing
         RECENT_CONTEXT=$(tail -c "$HARD_CAP" "$TRANSCRIPT_PATH" | tail -n +2 | jq -s '.' 2>/dev/null)
-        ESCALATED_MODEL="opus"
         log "Delta capped: ${DELTA_BYTES}b > hard cap ${HARD_CAP}b, using last ${HARD_CAP}b with opus"
     elif [ "$DELTA_BYTES" -gt "$SONNET_MAX" ]; then
         RECENT_CONTEXT=$(tail -c +$((LAST_OFFSET + 1)) "$TRANSCRIPT_PATH" | jq -s '.' 2>/dev/null)
