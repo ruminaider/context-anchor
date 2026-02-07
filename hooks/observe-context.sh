@@ -42,6 +42,51 @@ log() {
     echo "[$(date -Iseconds)] [$HOOK_EVENT] $1" >> "$LOG_FILE"
 }
 
+# Find the parent session's anchor file for fork cold-start seeding.
+# Forks share the same first user message timestamp as their parent.
+# Scans sibling transcripts in the same project directory for a match.
+# Outputs the parent anchor path to stdout if found; returns 1 otherwise.
+find_parent_anchor() {
+    local our_transcript="$1"
+    local our_session="$2"
+    local project_dir
+    project_dir=$(dirname "$our_transcript")
+
+    # Extract our first user message timestamp
+    local our_first_ts
+    our_first_ts=$(head -n 20 "$our_transcript" | jq -r 'select(.type == "user") | .timestamp' 2>/dev/null | head -n 1)
+
+    if [ -z "$our_first_ts" ] || [ "$our_first_ts" = "null" ]; then
+        return 1
+    fi
+
+    # Scan sibling transcripts for matching first user timestamp
+    local sibling
+    for sibling in "$project_dir"/*.jsonl; do
+        [ -f "$sibling" ] || continue
+
+        # Skip our own transcript
+        local sibling_session
+        sibling_session=$(basename "$sibling" | sed 's/\.jsonl$//' | cut -d'-' -f1-5)
+        [ "$sibling_session" = "$our_session" ] && continue
+
+        # Check first user message timestamp
+        local sibling_ts
+        sibling_ts=$(head -n 20 "$sibling" | jq -r 'select(.type == "user") | .timestamp' 2>/dev/null | head -n 1)
+
+        if [ "$sibling_ts" = "$our_first_ts" ]; then
+            # Found a sibling with matching first timestamp — check for anchor
+            local sibling_anchor="$ANCHOR_DIR/$sibling_session.md"
+            if [ -f "$sibling_anchor" ]; then
+                echo "$sibling_anchor"
+                return 0
+            fi
+        fi
+    done
+
+    return 1
+}
+
 # Preprocess transcript: filter noise, strip system reminders, annotate by role, drop empties
 # Input: $1 = JSON array string (raw RECENT_CONTEXT from jq -s '.')
 # Output: Preprocessed JSON array to stdout
