@@ -217,6 +217,16 @@ You should see `[Stop] Hook fired` entries showing the observer evaluating each 
 | Markdown format, not JSON | The observer is a language model. Natural language is what it writes and reads best. |
 | No hard token cap | Simple conversations need little context; dense discussions need more. Signal density is the constraint, not a number. |
 
+## Conversation Forks
+
+Context anchoring works seamlessly with Claude Code's conversation fork feature. No special configuration is required.
+
+When you fork a conversation, Claude Code assigns the fork a new session ID and copies the full parent transcript (with session IDs rewritten to the new ID). Because anchors are keyed by session ID, this means:
+
+- **The fork inherits the parent's anchor.** On first run, the observer detects there's no anchor yet for this session. It identifies the parent by matching the first user message timestamp across sibling transcripts, then copies the parent's anchor as a starting point.
+- **Each fork gets its own anchor.** The parent's anchor stays untouched; the fork's copy diverges independently from that point.
+- **Parent and fork evolve independently.** After the fork point, each conversation accumulates its own deltas and updates its own anchor. Decisions made in the fork never affect the parent, and vice versa.
+
 ## License
 
 MIT
