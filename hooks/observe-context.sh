@@ -343,19 +343,50 @@ else
     OBSERVER_MODEL="haiku"
 fi
 
-log "Calling claude -p --model $OBSERVER_MODEL"
+# Retry configuration
+MAX_RETRIES=${CONTEXT_ANCHOR_MAX_RETRIES:-2}
+RETRY_BASE_DELAY=${CONTEXT_ANCHOR_RETRY_BASE_DELAY:-3}
 
-# Call claude in observer mode with tool access for file writing
-CLAUDE_RESPONSE=$(echo "$OBSERVER_PROMPT" | (cd "$OBSERVER_WORK_DIR" && CONTEXT_ANCHOR_OBSERVER_MODE=true claude -p --model "$OBSERVER_MODEL" --allowedTools "Write,Read,Bash" --dangerously-skip-permissions) 2>/dev/null)
-CLAUDE_EXIT=$?
+CLAUDE_EXIT=1
+CLAUDE_RESPONSE=""
 
-# Always update the offset tracker — even on failure, so we don't retry
-# the same oversized input in an infinite loop
+for ATTEMPT in $(seq 0 "$MAX_RETRIES"); do
+    if [ "$ATTEMPT" -gt 0 ]; then
+        # Exponential backoff: base * 2^(attempt-1) + random jitter 0-2s
+        BACKOFF=$(( RETRY_BASE_DELAY * (1 << (ATTEMPT - 1)) ))
+        JITTER=$(( RANDOM % 3 ))
+        SLEEP_TIME=$(( BACKOFF + JITTER ))
+        log "Retry $ATTEMPT/$MAX_RETRIES after ${SLEEP_TIME}s backoff"
+        sleep "$SLEEP_TIME"
+    fi
+
+    log "Calling claude -p --model $OBSERVER_MODEL (attempt $((ATTEMPT + 1))/$((MAX_RETRIES + 1)))"
+
+    # Capture stderr to temp file for logging (was 2>/dev/null before)
+    CLAUDE_STDERR_FILE=$(mktemp)
+    CLAUDE_RESPONSE=$(echo "$OBSERVER_PROMPT" | (cd "$OBSERVER_WORK_DIR" && CONTEXT_ANCHOR_OBSERVER_MODE=true claude -p --model "$OBSERVER_MODEL" --allowedTools "Write,Read,Bash" --dangerously-skip-permissions) 2>"$CLAUDE_STDERR_FILE")
+    CLAUDE_EXIT=$?
+    CLAUDE_STDERR=$(cat "$CLAUDE_STDERR_FILE" 2>/dev/null)
+    rm -f "$CLAUDE_STDERR_FILE"
+
+    if [ -n "$CLAUDE_STDERR" ]; then
+        log "stderr: $CLAUDE_STDERR"
+    fi
+
+    if [ $CLAUDE_EXIT -eq 0 ]; then
+        break
+    fi
+
+    log "Claude command failed with exit code $CLAUDE_EXIT (attempt $((ATTEMPT + 1))/$((MAX_RETRIES + 1)))"
+done
+
+# Update offset after retry loop — on both success and final failure
+# (prevents persistent failures from blocking future runs)
 echo "$CURRENT_SIZE" > "$STATE_FILE"
 
 if [ $CLAUDE_EXIT -ne 0 ]; then
-    log "Claude command failed with exit code $CLAUDE_EXIT"
-    echo '{"decision": "approve", "reason": "Observer command failed"}'
+    log "Claude command failed after $((MAX_RETRIES + 1)) attempts, giving up"
+    echo '{"decision": "approve", "reason": "Observer command failed after retries"}'
     exit 0
 fi
 
