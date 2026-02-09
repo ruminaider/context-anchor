@@ -394,6 +394,8 @@ fi
 if [ -f "$ANCHOR_FILE" ]; then
     ANCHOR_SIZE=$(wc -c < "$ANCHOR_FILE" | tr -d ' ')
     log "Anchor file exists ($ANCHOR_SIZE bytes)"
+elif [ -n "$EXISTING_ANCHOR" ]; then
+    log "WARNING: Anchor file vanished during observation! Was ${#EXISTING_ANCHOR} chars. Path: $ANCHOR_FILE"
 else
     log "No anchor file created (observer decided nothing meaningful changed)"
 fi
