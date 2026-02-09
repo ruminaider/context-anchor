@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Context Anchor Observer - Stop/PreCompact Hook Script
+# Context Anchor Observer - Stop/SubagentStop/PreCompact Hook Script
 # Evaluates recent conversation and updates the context anchor file
 # Uses model escalation based on delta size: haiku (<50KB) → sonnet (<200KB) → opus
 # Deltas exceeding 500KB are capped to prevent context window overflow
@@ -198,8 +198,8 @@ if [ "$LAST_OFFSET" -gt "$CURRENT_SIZE" ]; then
     LAST_OFFSET=0
 fi
 
-# Skip if no new content (for Stop hook only — PreCompact always runs)
-if [ "$HOOK_EVENT" = "Stop" ] && [ "$CURRENT_SIZE" -le "$LAST_OFFSET" ]; then
+# Skip if no new content (PreCompact always runs; Stop/SubagentStop skip)
+if [ "$HOOK_EVENT" != "PreCompact" ] && [ "$CURRENT_SIZE" -le "$LAST_OFFSET" ]; then
     log "No new content since last check (offset=$LAST_OFFSET, size=$CURRENT_SIZE)"
     echo '{"decision": "approve", "reason": "No new content"}'
     exit 0
@@ -254,9 +254,9 @@ fi
 RECENT_CONTEXT=$(preprocess_transcript "$RECENT_CONTEXT")
 log "Preprocessed delta: ${#RECENT_CONTEXT} chars"
 
-# Check if delta is too small to bother (< 200 bytes for Stop hooks)
+# Check if delta is too small to bother (< 200 bytes, skip for non-PreCompact hooks)
 DELTA_SIZE=${#RECENT_CONTEXT}
-if [ "$HOOK_EVENT" = "Stop" ] && [ "$DELTA_SIZE" -lt 200 ]; then
+if [ "$HOOK_EVENT" != "PreCompact" ] && [ "$DELTA_SIZE" -lt 200 ]; then
     log "Delta too small ($DELTA_SIZE bytes), skipping"
     echo "$CURRENT_SIZE" > "$STATE_FILE"
     echo '{"decision": "approve", "reason": "Delta too small"}'
