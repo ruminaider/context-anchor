@@ -378,6 +378,9 @@ for ATTEMPT in $(seq 0 "$MAX_RETRIES"); do
     fi
 
     log "Claude command failed with exit code $CLAUDE_EXIT (attempt $((ATTEMPT + 1))/$((MAX_RETRIES + 1)))"
+    if [ -n "$CLAUDE_RESPONSE" ]; then
+        log "stdout (truncated): ${CLAUDE_RESPONSE:0:500}"
+    fi
 done
 
 # Update offset after retry loop — on both success and final failure
@@ -398,6 +401,9 @@ elif [ -n "$EXISTING_ANCHOR" ]; then
     log "WARNING: Anchor file vanished during observation! Was ${#EXISTING_ANCHOR} chars. Path: $ANCHOR_FILE"
 else
     log "No anchor file created (observer decided nothing meaningful changed)"
+    if [ -n "$CLAUDE_RESPONSE" ]; then
+        log "Observer response (truncated): ${CLAUDE_RESPONSE:0:300}"
+    fi
 fi
 
 echo '{"decision": "approve", "reason": "Observer completed"}'
